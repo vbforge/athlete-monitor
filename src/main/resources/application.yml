@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+
+  application:
+    name: athlete-monitor
+
+  # ── MySQL ──────────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:mysql://localhost:3307/athletedb?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: athlete
+    password: athlete123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+
+  # ── Kafka ──────────────────────────────────────────────────────────
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: athlete-monitor-group
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.vbforge.athletemonitor.model"
+
+# ── App custom config ───────────────────────────────────────────────
+app:
+  kafka:
+    topics:
+      raw-metrics: player-metrics
+      processed-metrics: processed-metrics
+  simulation:
+    interval-ms: 1000
+  websocket:
+    broadcast-interval-ms: 1000

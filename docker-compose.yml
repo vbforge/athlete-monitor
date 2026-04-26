@@ -1,0 +1,110 @@
+networks:
+  athlete-net:
+    driver: bridge
+
+services:
+
+  # ── Kafka (KRaft mode) ─────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:8.0.0
+    container_name: athlete-kafka
+    hostname: kafka
+    restart: unless-stopped
+    networks:
+      - athlete-net
+    ports:
+      - "9092:9092"    # external access from Spring Boot on host
+      - "19092:19092"  # internal broker-to-broker
+      - "9099:9099"    # KRaft controller
+    environment:
+      CLUSTER_ID: "AthMonCluster001ABC123"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9099"
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:19092,EXTERNAL://0.0.0.0:9092,DOCKER://0.0.0.0:29092,CONTROLLER://0.0.0.0:9099
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:9092,DOCKER://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 2
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:19092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Conduktor internal PostgreSQL (NOT our app DB, this is DB for Conductor) ───────────────────────
+  conduktor-postgres:
+    image: postgres:14
+    container_name: conduktor-postgres
+    restart: unless-stopped
+    networks:
+      - athlete-net
+    volumes:
+      - conduktor-pg-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: conduktor-console
+      POSTGRES_USER: conduktor
+      POSTGRES_PASSWORD: conduktor123
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conduktor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Conduktor UI — Kafka visual admin panel ────────────────────────
+  conduktor-console:
+    image: conduktor/conduktor-console:1.36.2
+    container_name: conduktor-console
+    restart: unless-stopped
+    networks:
+      - athlete-net
+    ports:
+      - "8085:8080"    # 8080 is reserved for our Spring Boot app
+    volumes:
+      - conduktor-data:/var/conduktor
+    environment:
+      CDK_DATABASE_URL: "postgresql://conduktor:conduktor123@conduktor-postgres:5432/conduktor-console"
+      CDK_CLUSTERS_0_ID: "athlete-cluster"
+      CDK_CLUSTERS_0_NAME: "Athlete Monitor Kafka"
+      CDK_CLUSTERS_0_COLOR: "#00E87A"
+      CDK_CLUSTERS_0_BOOTSTRAPSERVERS: "PLAINTEXT://kafka:19092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      conduktor-postgres:
+        condition: service_healthy
+
+  # ── MySQL — our application database ──────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: athlete-mysql
+    restart: unless-stopped
+    networks:
+      - athlete-net
+    ports:
+      - "3307:3306"    # 3306 is taken by local MySQL
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: athletedb
+      MYSQL_USER: athlete
+      MYSQL_PASSWORD: athlete123
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uathlete", "-pathlete123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql-data:
+  conduktor-pg-data:
+  conduktor-data:
