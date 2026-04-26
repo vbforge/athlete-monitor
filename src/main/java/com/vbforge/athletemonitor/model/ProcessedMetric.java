@@ -16,6 +16,7 @@ public class ProcessedMetric {
     private String playerName;
     private String position;
     private String teamId;
+    private Integer shirtNumber;
     private Double avgSpeed10s;     // 10-second window average
     private Double avgHr10s;        // 10-second window average
     private Double maxSpeedSeen;    // running max since monitoring started

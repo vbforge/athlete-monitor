@@ -1,12 +1,17 @@
 package com.vbforge.athletemonitor.config;
 
+import com.vbforge.athletemonitor.service.ActiveSessionService;
+
 import com.vbforge.athletemonitor.model.Player;
 import com.vbforge.athletemonitor.model.Team;
 import com.vbforge.athletemonitor.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -16,6 +21,7 @@ import java.util.List;
 public class DataInitializer implements CommandLineRunner {
 
     private final TeamRepository teamRepository;
+    private final ActiveSessionService sessionService;
 
     @Override
     public void run(String... args) {
@@ -146,4 +152,18 @@ public class DataInitializer implements CommandLineRunner {
             team.getPlayers().add(p);
         });
     }
+
+    @EventListener(ContextRefreshedEvent.class)
+    @Transactional
+    public void autoStartSession() {
+        // small delay to let DataInitializer.run() finish seeding first
+        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+
+        teamRepository.findByName("Liverpool FC").ifPresent(team -> {
+            // activate all 11 players for demo purposes
+            sessionService.startSession(team, team.getPlayers());
+            log.info("Auto-started monitoring session for: {}", team.getName());
+        });
+    }
+
 }

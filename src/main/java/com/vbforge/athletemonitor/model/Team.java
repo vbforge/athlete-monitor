@@ -2,6 +2,7 @@ package com.vbforge.athletemonitor.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,8 +29,11 @@ public class Team {
     private String country;               // "England"
 
     @OneToMany(mappedBy = "team",
-               cascade = CascadeType.ALL,
-               orphanRemoval = true)
+            cascade = CascadeType.ALL,
+            orphanRemoval = true,
+            fetch = FetchType.EAGER)  //to avoid LAZY INITIALIZATION
     @Builder.Default
     private List<Player> players = new ArrayList<>();
+
+
 }
