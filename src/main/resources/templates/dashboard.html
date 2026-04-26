@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Athlete Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { background: #0d1b2a; color: #00e87a;
+            font-family: monospace; padding: 2rem; }
+        #log { margin-top: 1rem; font-size: 0.8rem;
+            color: #a0c0b0; max-height: 400px; overflow-y: auto; }
+        .alert-critical { color: #ff2d55; }
+        .alert-warning  { color: #ffb800; }
+    </style>
+</head>
+<body>
+<h2>⚡ Athlete Monitor — WebSocket Test</h2>
+<p id="status">Connecting...</p>
+<div id="log"></div>
+
+<script>
+    const socket = new SockJS('/ws');
+    const client = Stomp.over(socket);
+    client.debug = null; // silence STOMP debug output
+
+    client.connect({}, () => {
+            document.getElementById('status').textContent
+                = '✅ Connected to WebSocket';
+
+            // subscribe to live metrics
+            client.subscribe('/topic/all-metrics', (msg) => {
+                const data = JSON.parse(msg.body);
+                const playerCount = Object.keys(data).length;
+                const sample = Object.values(data)[0];
+                log(`[METRICS] ${playerCount} players · `
+                    + `${sample?.playerName}: `
+                    + `${sample?.avgSpeed10s} m/s · `
+                    + `${sample?.avgHr10s} bpm`);
+            });
+
+            // subscribe to alerts
+            client.subscribe('/topic/alerts', (msg) => {
+                const alert = JSON.parse(msg.body);
+                log(`[ALERT ${alert.level}] ${alert.message}`,
+                    alert.level === 'CRITICAL'
+                        ? 'alert-critical' : 'alert-warning');
+            });
+        },
+        (err) => {
+            document.getElementById('status').textContent
+                = '❌ Connection failed: ' + err;
+        });
+
+    function log(text, cssClass = '') {
+        const div = document.getElementById('log');
+        const line = document.createElement('div');
+        if (cssClass) line.className = cssClass;
+        line.textContent = new Date().toLocaleTimeString() + ' ' + text;
+        div.insertBefore(line, div.firstChild);
+        if (div.children.length > 50) div.removeChild(div.lastChild);
+    }
+</script>
+</body>
+</html>
