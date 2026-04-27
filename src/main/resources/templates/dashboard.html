@@ -1,64 +1,1013 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Athlete Monitor</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Athlete Monitor · Match Day</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap" rel="stylesheet"/>
+
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+    <!-- SockJS + STOMP -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+
     <style>
-        body { background: #0d1b2a; color: #00e87a;
-            font-family: monospace; padding: 2rem; }
-        #log { margin-top: 1rem; font-size: 0.8rem;
-            color: #a0c0b0; max-height: 400px; overflow-y: auto; }
-        .alert-critical { color: #ff2d55; }
-        .alert-warning  { color: #ffb800; }
+        /* ── reset + root ───────────────────────────────────────── */
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --pitch:#0b2e1a; --pitch-l:#134d2b;
+            --bg:#050c14; --panel:rgba(8,20,35,0.92);
+            --border:rgba(0,210,120,0.18);
+            --green:#00e87a; --cyan:#00d2f4;
+            --red:#ff2d55;   --amber:#ffb800;
+            --text:#c8d8e8;  --dim: #506879;
+            --mono:'Share Tech Mono',monospace;
+            --display:'Orbitron',sans-serif;
+            --ui:'Rajdhani',sans-serif;
+        }
+        body{background:var(--bg);color:var(--text);font-family:var(--ui);min-height:100vh;overflow-x:hidden}
+
+        /* scanline */
+        body::before{content:'';position:fixed;inset:0;
+            background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+            pointer-events:none;z-index:1000}
+
+        /* ── header ─────────────────────────────────────────────── */
+        .header{
+            display:flex;align-items:center;justify-content:space-between;
+            padding:.8rem 1.5rem;
+            border-bottom:1px solid var(--border);
+            background:var(--panel);backdrop-filter:blur(12px);
+            position:sticky;top:0;z-index:100;gap:1rem;flex-wrap:wrap;
+        }
+        .header-left{display:flex;align-items:center;gap:.8rem}
+        .logo{font-family:var(--display);font-size:1rem;letter-spacing:.15em;
+            color:var(--green);text-shadow:0 0 20px rgba(0,232,122,.5)}
+        .team-badge{
+            width:32px;height:32px;border-radius:50%;
+            border:2px solid var(--cyan);
+            display:flex;align-items:center;justify-content:center;
+            font-family:var(--display);font-size:.55rem;color:var(--cyan);
+            text-align:center;line-height:1.1;
+            box-shadow:0 0 12px rgba(0,210,244,.25);
+            flex-shrink:0;
+        }
+        .team-name-hdr{font-family:var(--display);font-size:.8rem;letter-spacing:.1em;color:#fff}
+        .match-sub{font-family:var(--mono);font-size:.6rem;color:var(--dim)}
+        .live-badge{
+            display:flex;align-items:center;gap:.4rem;
+            background:rgba(255,45,85,.12);border:1px solid rgba(255,45,85,.4);
+            padding:.25rem .7rem;border-radius:4px;
+            font-family:var(--display);font-size:.6rem;letter-spacing:.2em;color:var(--red);
+            animation:livePulse 2s infinite;
+        }
+        @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(255,45,85,.3)}50%{box-shadow:0 0 0 6px rgba(255,45,85,0)}}
+        .live-dot{width:6px;height:6px;background:var(--red);border-radius:50%;animation:blink 1s infinite}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+        .header-center{display:flex;align-items:center;gap:1.5rem;flex-shrink:0}
+        .match-clock{
+            font-family:var(--display);font-size:1.6rem;color:var(--cyan);
+            text-shadow:0 0 15px rgba(0,210,244,.4);letter-spacing:.05em;
+            font-variant-numeric:tabular-nums;   /* all digits same width */
+            min-width:5.5ch;                     /* always wide enough for 00:00 */
+            display:inline-block;
+            text-align:center;
+        }
+
+        .team-stats{display:flex;gap:1rem}
+        .hdr-stat{text-align:center}
+        .hdr-stat-val{
+            font-family:var(--display);font-size:.9rem;line-height:1;
+            font-variant-numeric:tabular-nums;
+            min-width:3.5ch;
+            display:inline-block;
+            text-align:center;
+        }
+        .hdr-stat-lbl{font-family:var(--mono);font-size:.7rem;color:var(--dim);letter-spacing:.08em}
+
+        .header-right{display:flex;align-items:center;gap:.8rem}
+        .hdr-count{text-align:center}
+        .hdr-count-val{font-family:var(--display);font-size:1.1rem;line-height:1}
+        .hdr-count-lbl{font-family:var(--mono);font-size:.5rem;color:var(--dim);letter-spacing:.08em}
+
+        /* ── main layout ─────────────────────────────────────────── */
+        .main{display:grid;grid-template-columns:1fr 360px;height:calc(100vh - 57px)}
+
+        /* ── pitch side ──────────────────────────────────────────── */
+        .pitch-section{padding:1rem 1.2rem;overflow-y:auto;display:flex;flex-direction:column;gap:.8rem}
+        .section-label{font-family:var(--display);font-size:.55rem;letter-spacing:.25em;color:var(--dim)}
+
+        /* setup panel */
+        .setup-panel{
+            background:var(--panel);border:1px solid var(--border);border-radius:10px;
+            padding:.8rem 1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
+        }
+        .setup-label{font-family:var(--mono);font-size:.62rem;color:var(--dim);letter-spacing:.08em;white-space:nowrap}
+        select.setup-select{
+            background:rgba(0,0,0,.5);border:1px solid var(--border);
+            color:var(--text);font-family:var(--mono);font-size:.7rem;
+            padding:.35rem .7rem;border-radius:5px;cursor:pointer;outline:none;
+            transition:border-color .2s;
+        }
+        select.setup-select:focus{border-color:var(--cyan)}
+        .btn{
+            font-family:var(--display);font-size:.6rem;letter-spacing:.1em;
+            padding:.35rem .9rem;border-radius:5px;border:none;cursor:pointer;
+            transition:all .2s;white-space:nowrap;
+        }
+        .btn-start{background:var(--green);color:#000}
+        .btn-start:hover{box-shadow:0 0 15px rgba(0,232,122,.4)}
+        .btn-stop{background:rgba(255,45,85,.15);color:var(--red);border:1px solid rgba(255,45,85,.4)}
+        .btn-stop:hover{background:rgba(255,45,85,.25)}
+        .btn-stop:disabled{opacity:.3;cursor:not-allowed}
+        .btn-start:disabled{opacity:.4;cursor:not-allowed}
+
+        /* lineup picker */
+        .lineup-panel{
+            background:var(--panel);border:1px solid var(--border);border-radius:10px;
+            padding:.8rem 1rem;display:none;
+        }
+        .lineup-title{font-family:var(--display);font-size:.6rem;letter-spacing:.15em;color:var(--cyan);margin-bottom:.6rem}
+        .lineup-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.4rem}
+        .lineup-item{
+            display:flex;align-items:center;gap:.5rem;
+            background:rgba(0,0,0,.3);border:1px solid var(--border);
+            border-radius:6px;padding:.35rem .6rem;cursor:pointer;
+            transition:all .2s;
+        }
+        .lineup-item:hover{border-color:var(--cyan)}
+        .lineup-item.selected{background:rgba(0,210,244,.08);border-color:var(--cyan)}
+        .lineup-item input[type=checkbox]{accent-color:var(--cyan);cursor:pointer}
+        .lineup-item-num{font-family:var(--display);font-size:.75rem;color:var(--cyan);width:20px;text-align:center}
+        .lineup-item-name{font-family:var(--ui);font-size:.75rem;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .lineup-item-pos{font-family:var(--mono);font-size:.55rem;color:var(--dim)}
+        .lineup-count{font-family:var(--mono);font-size:.62rem;margin-top:.6rem}
+        .lineup-actions{display:flex;gap:.6rem;margin-top:.7rem}
+
+        /* pitch */
+        .pitch{
+            background:rgba(11,46,26,.0);border:2px solid rgba(255,255,255,.1);
+            border-radius:12px;padding:1.2rem .8rem;position:relative;
+            overflow:hidden;flex:1;min-height:460px;
+        }
+        .pitch::before{
+            content:'';position:absolute;inset:0;border-radius:10px;
+            background:repeating-linear-gradient(180deg,
+            rgba(13,56,30,.65) 0px,rgba(13,56,30,.65) 44px,
+            rgba(9,40,22,.65) 44px,rgba(9,40,22,.65) 88px);
+        }
+        .pitch::after{
+            content:'';position:absolute;top:50%;left:50%;
+            transform:translate(-50%,-50%);
+            width:110px;height:110px;
+            border:1px solid rgba(255,255,255,.09);border-radius:50%;
+        }
+        .center-line{position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(255,255,255,.09)}
+        .pitch-placeholder{
+            position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+            flex-direction:column;gap:.5rem;z-index:2;
+        }
+        .pitch-placeholder-icon{font-size:9.0rem;opacity:.7;}
+        .pitch-placeholder-text{font-family:var(--mono);font-size:.9rem;color:var(--dim)}
+
+        /* formation */
+        .formation-grid{position:relative;z-index:2;height:100%;min-height:460px;display:flex;flex-direction:column;gap:.6rem;padding:.4rem 0}
+        .formation-row{display:flex;justify-content:center;gap:1.2rem;align-items:center;flex:1}
+
+        /* player card */
+        .player-card{
+            background:rgba(5,15,30,.88);border:1px solid rgba(0,210,120,.2);
+            border-radius:10px;padding:.6rem .7rem;width:118px;
+            text-align:center;cursor:pointer;transition:all .25s;position:relative;overflow:hidden;
+        }
+        .player-card::before{content:'';position:absolute;inset:0;
+            background:linear-gradient(135deg,rgba(0,232,122,.04),transparent);opacity:0;transition:opacity .25s}
+        .player-card:hover::before{opacity:1}
+        .player-card:hover{transform:translateY(-2px) scale(1.03);border-color:var(--cyan);box-shadow:0 8px 25px rgba(0,210,244,.2)}
+        .player-card.selected{border-color:var(--cyan)!important;box-shadow:0 0 18px rgba(0,210,244,.35)}
+        .player-card.status-normal{border-color:rgba(0,232,122,.28)}
+        .player-card.status-warning{border-color:rgba(255,184,0,.5);background:rgba(255,184,0,.06)}
+        .player-card.status-critical{border-color:rgba(255,45,85,.6);background:rgba(255,45,85,.1);animation:critPulse 1.5s infinite}
+        @keyframes critPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,45,85,.3)}50%{box-shadow:0 0 10px 3px rgba(255,45,85,.2)}}
+
+        .card-num{font-family:var(--display);font-size:1rem;font-weight:900;color:#fff;line-height:1}
+        .card-name{font-family:var(--ui);font-weight:700;font-size:.68rem;color:var(--text);
+            margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .card-pos{display:inline-block;font-family:var(--mono);font-size:.55rem;color:var(--cyan);
+            background:rgba(0,210,244,.1);padding:1px 4px;border-radius:3px;margin-bottom:.3rem}
+        .status-dot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%}
+        .dot-normal{background:var(--green);box-shadow:0 0 5px var(--green)}
+        .dot-warning{background:var(--amber);box-shadow:0 0 5px var(--amber)}
+        .dot-critical{background:var(--red);box-shadow:0 0 7px var(--red);animation:blink .8s infinite}
+
+        .mini-metrics{display:flex;flex-direction:column;gap:2px;margin-top:.3rem}
+        .mini-row{display:flex;align-items:center;gap:3px}
+        .mini-lbl{font-family:var(--mono);font-size:.58rem;color:var(--dim);width:16px;flex-shrink:0}
+        .mini-track{flex:1;height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden}
+        .mini-fill{height:100%;border-radius:2px;transition:width .5s ease}
+        .fill-spd{background:var(--cyan)}
+        .fill-hr{background:var(--red)}
+        .fill-km{background:var(--green)}
+        .mini-val{font-family:var(--mono);font-size:.58rem;color:var(--text);width:28px;text-align:right;flex-shrink:0}
+
+        /* ── detail panel ────────────────────────────────────────── */
+        .detail-panel{border-left:1px solid var(--border);background:rgba(5,12,22,.8);
+            display:flex;flex-direction:column;overflow:hidden}
+
+        .panel-hdr{padding:.9rem 1.1rem .7rem;border-bottom:1px solid var(--border)}
+        .panel-player-row{display:flex;align-items:center;gap:.7rem;margin-bottom:.65rem}
+        .panel-avatar{
+            width:42px;height:42px;border-radius:50%;
+            background:linear-gradient(135deg,var(--pitch-l),var(--pitch));
+            border:2px solid var(--cyan);display:flex;align-items:center;justify-content:center;
+            font-family:var(--display);font-size:.85rem;color:var(--cyan);
+            box-shadow:0 0 14px rgba(0,210,244,.22);flex-shrink:0;
+        }
+        .panel-name{font-family:var(--display);font-size:.88rem;letter-spacing:.08em;color:#fff}
+        .panel-pos{font-family:var(--mono);font-size:.6rem;color:var(--dim);margin-top:2px}
+
+        /* big stats */
+        .big-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;
+            padding:.7rem 1.1rem;border-bottom:1px solid var(--border)}
+        .big-stat{text-align:center;padding:.5rem .3rem;
+            background:rgba(0,0,0,.3);border-radius:8px;border:1px solid var(--border)}
+        .big-stat-val{font-family:var(--display);font-size:1.2rem;font-weight:700;line-height:1}
+        .big-stat-lbl{font-family:var(--mono);font-size:.5rem;color:var(--dim);margin-top:2px;letter-spacing:.08em}
+
+        /* chart */
+        .chart-section{flex:1;padding:.7rem 1.1rem;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+        .chart-tabs{display:flex;gap:.35rem;margin-bottom:.6rem}
+        .chart-tab{font-family:var(--mono);font-size:.58rem;padding:.22rem .55rem;border-radius:3px;
+            border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;transition:all .2s;letter-spacing:.06em}
+        .chart-tab.active{background:rgba(0,210,244,.12);border-color:var(--cyan);color:var(--cyan)}
+        .chart-wrap{flex:1;position:relative;min-height:0}
+
+        /* alerts */
+        .alerts-section{border-top:1px solid var(--border);padding:.65rem 1.1rem;max-height:155px;overflow-y:auto}
+        .alerts-title{font-family:var(--display);font-size:.52rem;letter-spacing:.2em;color:var(--dim);margin-bottom:.45rem}
+        .alert-item{display:flex;align-items:flex-start;gap:.45rem;padding:.35rem 0;
+            border-bottom:1px solid rgba(255,255,255,.04);animation:fadeIn .4s ease}
+        @keyframes fadeIn{from{opacity:0;transform:translateX(5px)}to{opacity:1;transform:translateX(0)}}
+        .alert-icon{font-size:.72rem;flex-shrink:0;margin-top:1px}
+        .alert-text{font-family:var(--mono);font-size:.6rem;color:var(--text);line-height:1.4;flex:1}
+        .alert-time{font-family:var(--mono);font-size:.52rem;color:var(--dim);flex-shrink:0}
+
+        /* scrollbar */
+        ::-webkit-scrollbar{width:4px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
     </style>
 </head>
 <body>
-<h2>⚡ Athlete Monitor — WebSocket Test</h2>
-<p id="status">Connecting...</p>
-<div id="log"></div>
 
+<!-- ══ HEADER ══════════════════════════════════════════════════ -->
+<div class="header">
+    <div class="header-left">
+        <div>
+            <div class="logo">ATHLETE MONITOR</div>
+            <div class="match-sub" id="matchSub">NO ACTIVE SESSION</div>
+        </div>
+        <div class="team-badge" id="teamBadge">—</div>
+        <div>
+            <div class="team-name-hdr" id="teamNameHdr">SELECT A TEAM</div>
+        </div>
+        <div class="live-badge" id="liveBadge" style="display:none">
+            <div class="live-dot"></div>LIVE
+        </div>
+    </div>
+
+    <div class="header-center">
+        <div>
+            <div class="team-name-hdr" style="text-align: center">MATCH TIME</div>
+            <div class="match-clock" id="matchClock">00:00</div>
+        </div>
+        <div class="team-stats">
+            <div class="hdr-stat">
+                <div class="hdr-stat-lbl">AVG M/S</div>
+                <div class="hdr-stat-val" id="hdrAvgSpeed" style="color:var(--cyan)">—</div>
+            </div>
+            <div class="hdr-stat">
+                <div class="hdr-stat-lbl">AVG BPM</div>
+                <div class="hdr-stat-val" id="hdrAvgHR" style="color:var(--red)">—</div>
+            </div>
+            <div class="hdr-stat">
+                <div class="hdr-stat-lbl">TEAM KM</div>
+                <div class="hdr-stat-val" id="hdrTotalKm" style="color:var(--green)">—</div>
+            </div>
+            <div class="hdr-stat">
+                <div class="hdr-stat-lbl">INTENSITY</div>
+                <div class="hdr-stat-val" id="hdrIntensity" style="color:var(--amber)">—</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="header-right">
+        <div class="hdr-count">
+            <div class="hdr-count-val" id="criticalCount" style="color:var(--red)">0</div>
+            <div class="hdr-count-lbl">CRITICAL</div>
+        </div>
+        <div class="hdr-count">
+            <div class="hdr-count-val" id="warningCount" style="color:var(--amber)">0</div>
+            <div class="hdr-count-lbl">WARNINGS</div>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MAIN ════════════════════════════════════════════════════ -->
+<div class="main">
+
+    <!-- LEFT: pitch + controls -->
+    <div class="pitch-section">
+
+        <!-- Setup bar -->
+        <div class="setup-panel">
+            <span class="setup-label">TEAM</span>
+            <select class="setup-select" id="teamSelect" onchange="onTeamChange()">
+                <option value="">— select team —</option>
+                <th:block th:each="team : ${teams}">
+                    <option th:value="${team.id}"
+                            th:text="${team.name}"
+                            th:attr="data-formation=${team.formation},data-color=${team.badgeColor}">
+                    </option>
+                </th:block>
+            </select>
+
+            <span class="setup-label" style="margin-left:.5rem">FORMATION</span>
+            <span id="formationLabel"
+                  style="font-family:var(--mono);font-size:.7rem;color:var(--cyan)">—</span>
+
+            <div style="flex:1"></div>
+
+            <button class="btn btn-start" id="btnStart"
+                    onclick="startSession()" disabled>START MONITORING</button>
+            <button class="btn btn-stop"  id="btnStop"
+                    onclick="stopSession()" disabled>STOP</button>
+        </div>
+
+        <!-- Lineup picker (shown after team selected) -->
+        <div class="lineup-panel" id="lineupPanel">
+            <div class="lineup-title">SELECT 11 PLAYERS FOR TODAY'S MATCH</div>
+            <div class="lineup-grid" id="lineupGrid"></div>
+            <div class="lineup-count">
+                Selected: <span id="lineupCount" style="color:var(--cyan)">0</span> / 11
+            </div>
+        </div>
+
+        <!-- Pitch -->
+        <div class="pitch" id="pitchContainer">
+            <div class="center-line"></div>
+            <div class="pitch-placeholder" id="pitchPlaceholder">
+<!--                <div class="pitch-placeholder-icon">⚽</div>-->
+                <div class="pitch-placeholder-text">SELECT A TEAM AND START MONITORING</div>
+            </div>
+            <div class="formation-grid" id="formationGrid" style="display:none"></div>
+        </div>
+
+    </div>
+
+    <!-- RIGHT: detail panel -->
+    <div class="detail-panel">
+        <div class="panel-hdr">
+            <div class="panel-player-row">
+                <div class="panel-avatar" id="panelAvatar">—</div>
+                <div>
+                    <div class="panel-name" id="panelName">SELECT A PLAYER</div>
+                    <div class="panel-pos"  id="panelPos">CLICK ANY CARD ON THE PITCH</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="big-stats">
+            <div class="big-stat">
+                <div class="big-stat-val" id="dSpeed" style="color:var(--cyan)">—</div>
+                <div class="big-stat-lbl">M/S</div>
+            </div>
+            <div class="big-stat">
+                <div class="big-stat-val" id="dHR" style="color:var(--red)">—</div>
+                <div class="big-stat-lbl">BPM</div>
+            </div>
+            <div class="big-stat">
+                <div class="big-stat-val" id="dDist" style="color:var(--green)">—</div>
+                <div class="big-stat-lbl">KM</div>
+            </div>
+            <div class="big-stat">
+                <div class="big-stat-val" id="dMaxSpd" style="color:var(--amber)">—</div>
+                <div class="big-stat-lbl">MAX M/S</div>
+            </div>
+            <div class="big-stat">
+                <div class="big-stat-val" id="dLoad" style="color:#b06cf8">—</div>
+                <div class="big-stat-lbl">LOAD %</div>
+            </div>
+            <div class="big-stat">
+                <div class="big-stat-val" id="dSprints" style="color:var(--green)">—</div>
+                <div class="big-stat-lbl">SPRINTS</div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <div class="chart-tabs">
+                <button class="chart-tab active" onclick="setTab('speed',this)">SPEED</button>
+                <button class="chart-tab"        onclick="setTab('hr',this)">HEART RATE</button>
+                <button class="chart-tab"        onclick="setTab('both',this)">BOTH</button>
+            </div>
+            <div class="chart-wrap">
+                <canvas id="detailChart"></canvas>
+            </div>
+        </div>
+
+        <div class="alerts-section">
+            <div class="alerts-title">SYSTEM ALERTS</div>
+            <div id="alertFeed"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══ SCRIPT ══════════════════════════════════════════════════ -->
 <script>
-    const socket = new SockJS('/ws');
-    const client = Stomp.over(socket);
-    client.debug = null; // silence STOMP debug output
+    // ── state ──────────────────────────────────────────────────────
+    let stompClient   = null;
+    let chart         = null;
+    let activeTab     = 'speed';
+    let selectedId    = null;
+    let sessionActive = false;
+    let matchSeconds  = 0;
+    let clockInterval = null;
 
-    client.connect({}, () => {
-            document.getElementById('status').textContent
-                = '✅ Connected to WebSocket';
+    // teams loaded from server (Thymeleaf pre-renders the select,
+    // but we also keep a JS map for fast lookup)
+    const teamsById = {};
 
-            // subscribe to live metrics
-            client.subscribe('/topic/all-metrics', (msg) => {
-                const data = JSON.parse(msg.body);
-                const playerCount = Object.keys(data).length;
-                const sample = Object.values(data)[0];
-                log(`[METRICS] ${playerCount} players · `
-                    + `${sample?.playerName}: `
-                    + `${sample?.avgSpeed10s} m/s · `
-                    + `${sample?.avgHr10s} bpm`);
+    // formation definitions: rows top→bottom (attack→defence)
+    const FORMATIONS = {
+        '4-3-3': [
+            ['LW', 'ST', 'RW'],
+            ['CM', 'CM', 'CM'],
+            ['LB', 'CB', 'CB', 'RB'],
+            ['GK']
+        ],
+        '4-4-2': [
+            ['ST', 'ST'],
+            ['LW', 'CM', 'CM', 'RW'],
+            ['LB', 'CB', 'CB', 'RB'],
+            ['GK']
+        ],
+        '3-5-2': [
+            ['ST', 'ST'],
+            ['LWB', 'CM', 'CM', 'CM', 'RWB'],
+            ['CB', 'CB', 'CB'],
+            ['GK']
+        ],
+        '4-2-3-1': [
+            ['ST'],
+            ['LW', 'CAM', 'RW'],
+            ['CDM', 'CDM'],
+            ['LB', 'CB', 'CB', 'RB'],
+            ['GK']
+        ],
+        '3-4-3': [
+            ['LW', 'ST', 'RW'],
+            ['LM', 'CM', 'CM', 'RM'],
+            ['CB', 'CB', 'CB'],
+            ['GK']
+        ]
+    };
+
+    // position priority order — used to auto-assign players to slots
+    const POS_PRIORITY = {
+        'GK':['GK'],
+        'CB':['CB'],
+        'LB':['LB','LWB'],
+        'RB':['RB','RWB'],
+        'LWB':['LWB','LB'],
+        'RWB':['RWB','RB'],
+        'CDM':['CDM','CM'],
+        'CAM':['CAM','CM','AM'],
+        'CM':['CM','CDM','CAM'],
+        'LM':['LM','LW','LB'],
+        'RM':['RM','RW','RB'],
+        'LW':['LW','LM','ST'],
+        'RW':['RW','RM','ST'],
+        'ST':['ST','CF','LW','RW']
+    };
+
+    // players in current session: id → player data
+    let sessionPlayers = {};
+
+    // ── on page load ───────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+        loadTeams();
+        initChart();
+        connectWebSocket();
+        addAlert('🟢', 'Dashboard ready — select a team to begin', 'info');
+    });
+
+    // ── load teams from API ────────────────────────────────────────
+    function loadTeams() {
+        fetch('/api/teams')
+            .then(r => r.json())
+            .then(teams => {
+                teams.forEach(t => { teamsById[t.id] = t; });
+            })
+            .catch(e => console.warn('Could not load teams:', e));
+    }
+
+    // ── team selection ─────────────────────────────────────────────
+    function onTeamChange() {
+        const sel   = document.getElementById('teamSelect');
+        const teamId = sel.value;
+        if (!teamId) {
+            document.getElementById('lineupPanel').style.display = 'none';
+            document.getElementById('formationLabel').textContent = '—';
+            document.getElementById('btnStart').disabled = true;
+            return;
+        }
+
+        const opt = sel.options[sel.selectedIndex];
+        const formation = opt.getAttribute('data-formation') || '4-3-3';
+        const color     = opt.getAttribute('data-color')     || '#00e87a';
+
+        document.getElementById('formationLabel').textContent = formation;
+
+        // update header badge
+        const badge = document.getElementById('teamBadge');
+        badge.style.borderColor = color;
+        badge.style.color       = color;
+        badge.textContent = opt.text.substring(0,3).toUpperCase();
+
+        // fetch squad and show lineup picker
+        fetch('/api/teams')
+            .then(r => r.json())
+            .then(teams => {
+                const team = teams.find(t => String(t.id) === String(teamId));
+                if (!team) return;
+                renderLineupPicker(team);
             });
+    }
 
-            // subscribe to alerts
-            client.subscribe('/topic/alerts', (msg) => {
-                const alert = JSON.parse(msg.body);
-                log(`[ALERT ${alert.level}] ${alert.message}`,
-                    alert.level === 'CRITICAL'
-                        ? 'alert-critical' : 'alert-warning');
+    // ── lineup picker ──────────────────────────────────────────────
+    function renderLineupPicker(team) {
+        const panel = document.getElementById('lineupPanel');
+        const grid  = document.getElementById('lineupGrid');
+        panel.style.display = 'block';
+        grid.innerHTML = '';
+
+        // sort by shirt number
+        const players = [...team.players].sort((a,b) => a.shirtNumber - b.shirtNumber);
+
+        players.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'lineup-item';
+            item.dataset.playerId = p.id;
+            item.innerHTML = `
+      <input type="checkbox" id="cb_${p.id}" onchange="onLineupChange()"/>
+      <span class="lineup-item-num">${p.shirtNumber}</span>
+      <span class="lineup-item-name">${p.name}</span>
+      <span class="lineup-item-pos">${p.position}</span>
+    `;
+            item.addEventListener('click', e => {
+                if (e.target.tagName !== 'INPUT') {
+                    const cb = item.querySelector('input');
+                    cb.checked = !cb.checked;
+                    onLineupChange();
+                }
             });
-        },
-        (err) => {
-            document.getElementById('status').textContent
-                = '❌ Connection failed: ' + err;
+            grid.appendChild(item);
         });
 
-    function log(text, cssClass = '') {
-        const div = document.getElementById('log');
-        const line = document.createElement('div');
-        if (cssClass) line.className = cssClass;
-        line.textContent = new Date().toLocaleTimeString() + ' ' + text;
-        div.insertBefore(line, div.firstChild);
-        if (div.children.length > 50) div.removeChild(div.lastChild);
+        onLineupChange();
+    }
+
+    function onLineupChange() {
+        const checked = document.querySelectorAll('#lineupGrid input:checked');
+        const count   = checked.length;
+        document.getElementById('lineupCount').textContent = count;
+
+        // highlight selected items
+        document.querySelectorAll('.lineup-item').forEach(item => {
+            const cb = item.querySelector('input');
+            item.classList.toggle('selected', cb.checked);
+        });
+
+        document.getElementById('btnStart').disabled = count !== 11;
+    }
+
+    // ── start session ──────────────────────────────────────────────
+    function startSession() {
+        const teamId    = document.getElementById('teamSelect').value;
+        const playerIds = [...document.querySelectorAll('#lineupGrid input:checked')]
+            .map(cb => parseInt(cb.closest('.lineup-item').dataset.playerId));
+
+        if (playerIds.length !== 11) {
+            addAlert('🔴', 'Please select exactly 11 players', 'warning');
+            return;
+        }
+
+        fetch('/api/session/start', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ teamId: parseInt(teamId), playerIds })
+        })
+            .then(r => r.text())
+            .then(msg => {
+                addAlert('🟢', msg, 'info');
+                sessionActive = true;
+
+                // cache players for formation rendering
+                const team = Object.values(teamsById).find(t => String(t.id) === String(teamId))
+                    || { players: [] };
+                // re-fetch to get fresh data
+                fetch('/api/teams')
+                    .then(r => r.json())
+                    .then(teams => {
+                        const t = teams.find(t => String(t.id) === String(teamId));
+                        if (!t) return;
+                        sessionPlayers = {};
+                        t.players
+                            .filter(p => playerIds.includes(p.id))
+                            .forEach(p => { sessionPlayers[String(p.id)] = p; });
+
+                        const formation = document.getElementById('formationLabel').textContent;
+                        renderFormation(formation, Object.values(sessionPlayers));
+                    });
+
+                // update UI
+                const sel = document.getElementById('teamSelect');
+                const opt = sel.options[sel.selectedIndex];
+                document.getElementById('teamNameHdr').textContent = opt.text.toUpperCase();
+                // document.getElementById('matchSub').textContent = opt.getAttribute('data-formation') + ' · ';
+                document.getElementById('matchSub').textContent = 'COACH · DASHBOARD';
+                document.getElementById('liveBadge').style.display = 'flex';
+                document.getElementById('lineupPanel').style.display = 'none';
+                document.getElementById('btnStop').disabled = false;
+                document.getElementById('btnStart').disabled = true;
+                document.getElementById('teamSelect').disabled = true;
+
+                // start match clock
+                matchSeconds = 0;
+                if (clockInterval) clearInterval(clockInterval);
+                clockInterval = setInterval(() => {
+                    matchSeconds++;
+                    const m = Math.floor(matchSeconds/60);
+                    const s = matchSeconds % 60;
+                    document.getElementById('matchClock').textContent =
+                        String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+                }, 1000);
+            })
+            .catch(e => addAlert('🔴', 'Failed to start session: ' + e.message, 'critical'));
+    }
+
+    // ── stop session ───────────────────────────────────────────────
+    function stopSession() {
+        fetch('/api/session/stop', {method:'POST'})
+            .then(r => r.text())
+            .then(msg => {
+                addAlert('🟡', msg, 'warning');
+                sessionActive = false;
+                if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+                document.getElementById('liveBadge').style.display  = 'none';
+                document.getElementById('btnStop').disabled          = true;
+                document.getElementById('btnStart').disabled         = false;
+                document.getElementById('teamSelect').disabled       = false;
+                document.getElementById('formationGrid').style.display = 'none';
+                document.getElementById('pitchPlaceholder').style.display = 'flex';
+                document.getElementById('matchSub').textContent = 'SESSION ENDED';
+                document.getElementById('matchClock').textContent  = '00:00';
+                document.getElementById('hdrAvgSpeed').textContent = '—';
+                document.getElementById('hdrAvgHR').textContent    = '—';
+                document.getElementById('hdrAvgKm').textContent    = '—';
+                document.getElementById('criticalCount').textContent = '0';
+                document.getElementById('warningCount').textContent  = '0';
+            });
+    }
+
+    // ── formation renderer ─────────────────────────────────────────
+    function renderFormation(formationKey, players) {
+        const grid = document.getElementById('formationGrid');
+        grid.innerHTML = '';
+
+        const rows = FORMATIONS[formationKey] || FORMATIONS['4-3-3'];
+        const slotList = rows.flatMap(r => r);           // flat list of all slots
+        const playerArray = assignPlayersToSlots(slotList, players); // parallel array
+
+        let slotIndex = 0;
+        rows.forEach(rowSlots => {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'formation-row';
+            rowSlots.forEach(() => {
+                const player = playerArray[slotIndex++];
+                if (player) rowDiv.appendChild(buildCard(player));
+            });
+            grid.appendChild(rowDiv);
+        });
+
+        document.getElementById('pitchPlaceholder').style.display = 'none';
+        grid.style.display = 'flex';
+        grid.style.flexDirection = 'column';
+    }
+
+    /**
+     * Greedy assignment: for each slot, find the best unassigned player
+     * whose position matches the slot's priority list.
+     */
+    function assignPlayersToSlots(slotList, players) {
+        const remaining = [...players];
+        // result is an ARRAY, one entry per slot (handles duplicate slot names)
+        return slotList.map(slot => {
+            const priorities = POS_PRIORITY[slot] || [slot];
+            let bestIdx = -1;
+
+            for (const pos of priorities) {
+                const idx = remaining.findIndex(p =>
+                    p.position.toUpperCase() === pos.toUpperCase());
+                if (idx !== -1) { bestIdx = idx; break; }
+            }
+
+            // fallback: first unassigned player
+            if (bestIdx === -1 && remaining.length > 0) bestIdx = 0;
+
+            if (bestIdx === -1) return null;
+            const player = remaining[bestIdx];
+            remaining.splice(bestIdx, 1);
+            return player;
+        });
+    }
+
+    // ── build player card DOM ──────────────────────────────────────
+    function buildCard(player) {
+        const card = document.createElement('div');
+        card.className = 'player-card status-normal';
+        card.id = 'card_' + player.id;
+        card.dataset.playerId = player.id;
+
+        if (String(player.id) === String(selectedId)) card.classList.add('selected');
+
+        card.innerHTML = `
+    <div class="status-dot dot-normal" id="dot_${player.id}"></div>
+    <div class="card-num">${player.shirtNumber}</div>
+    <div class="card-name">${player.name.split(' ').pop()}</div>
+    <div class="card-pos">${player.position}</div>
+    <div class="mini-metrics">
+      <div class="mini-row">
+        <span class="mini-lbl">SPD</span>
+        <div class="mini-track"><div class="mini-fill fill-spd" id="sbar_${player.id}" style="width:0%"></div></div>
+        <span class="mini-val" id="sval_${player.id}">—</span>
+      </div>
+      <div class="mini-row">
+        <span class="mini-lbl">HR</span>
+        <div class="mini-track"><div class="mini-fill fill-hr" id="hbar_${player.id}" style="width:0%"></div></div>
+        <span class="mini-val" id="hval_${player.id}">—</span>
+      </div>
+      <div class="mini-row">
+        <span class="mini-lbl">KM↑</span>
+        <div class="mini-track"><div class="mini-fill fill-km" id="kbar_${player.id}" style="width:0%"></div></div>
+        <span class="mini-val" id="kval_${player.id}">—</span>
+      </div>
+    </div>
+  `;
+
+        card.addEventListener('click', () => selectPlayer(player.id));
+        return card;
+    }
+
+    // ── select player ──────────────────────────────────────────────
+    function selectPlayer(id) {
+        document.querySelectorAll('.player-card').forEach(c => c.classList.remove('selected'));
+        const card = document.getElementById('card_' + id);
+        if (card) card.classList.add('selected');
+        selectedId = String(id);
+
+        const p = sessionPlayers[String(id)];
+        if (!p) return;
+
+        document.getElementById('panelAvatar').textContent = p.shirtNumber;
+        document.getElementById('panelName').textContent   = p.name.toUpperCase();
+        document.getElementById('panelPos').textContent    = p.positionFull + ' · #' + p.shirtNumber;
+
+        // fetch history and rebuild chart
+        fetch('/api/history/' + id)
+            .then(r => r.json())
+            .then(history => {
+                if (!chart) return;
+                const labels = history.map(m => new Date(m.timestamp).toLocaleTimeString().slice(0,-3));
+                const speeds = history.map(m => m.avgSpeed10s);
+                const hrs    = history.map(m => m.avgHr10s);
+                chart.data.labels            = labels;
+                chart.data.datasets[0].data  = speeds;
+                chart.data.datasets[1].data  = hrs;
+                chart.update('none');
+            });
+    }
+
+    // ── WebSocket ──────────────────────────────────────────────────
+    function connectWebSocket() {
+        const socket = new SockJS('/ws');
+        stompClient  = Stomp.over(socket);
+        stompClient.debug = null;
+
+        stompClient.connect({}, () => {
+
+            stompClient.subscribe('/topic/all-metrics', msg => {
+                const data = JSON.parse(msg.body);
+                updateCards(data);
+                updateHeaderStats(data);
+            });
+            // 🟡
+            stompClient.subscribe('/topic/alerts', msg => {
+                const a = JSON.parse(msg.body);
+                const icon = a.level === 'CRITICAL' ? '🔴' : '';
+                addAlert(icon, a.message, a.level.toLowerCase());
+            });
+
+        }, err => {
+            console.warn('WebSocket error — retrying in 3s', err);
+            setTimeout(connectWebSocket, 3000);
+        });
+    }
+
+    // ── update all player cards ────────────────────────────────────
+    function updateCards(data) {
+        let criticals = 0, warnings = 0;
+
+        Object.entries(data).forEach(([id, m]) => {
+            const sbar = document.getElementById('sbar_' + id);
+            if (!sbar) return; // card not rendered yet
+
+            const sval = document.getElementById('sval_' + id);
+            const hbar = document.getElementById('hbar_' + id);
+            const hval = document.getElementById('hval_' + id);
+            const kbar = document.getElementById('kbar_' + id);
+            const kval = document.getElementById('kval_' + id);
+            const dot  = document.getElementById('dot_'  + id);
+            const card = document.getElementById('card_' + id);
+            // const kmBarPct = Math.min(Math.sqrt(km / 12) * 100, 100);
+
+            const spd  = m.avgSpeed10s   || 0;
+            const hr   = m.avgHr10s      || 0;
+            const km   = m.distanceCovered || 0;
+
+            if (sbar) sbar.style.width = Math.min((spd/10)*100,100) + '%';
+            if (sval) sval.textContent = spd.toFixed(1);
+            if (hbar) hbar.style.width = Math.min((hr/220)*100,100) + '%';
+            if (hval) hval.textContent = Math.round(hr);
+            if (kbar) kbar.style.width = Math.min((km/12)*100,100) + '%';
+            if (kval) kval.textContent = km < 1 ? km.toFixed(2) : km.toFixed(1);
+            // if (kbar) kbar.style.width = kmBarPct + '%';
+            // if (kval) kval.textContent = km < 1 ? km.toFixed(2) : km.toFixed(1);
+
+            // status
+            let status = 'normal';
+            if (spd >= 6.5 && hr >= 175) { status = 'critical'; criticals++; }
+            else if (spd >= 5.5 || hr >= 158) { status = 'warning'; warnings++; }
+
+            if (dot) dot.className = 'status-dot dot-' + status;
+            if (card) {
+                card.className = 'player-card status-' + status
+                    + (String(id) === String(selectedId) ? ' selected' : '');
+            }
+
+            // update detail panel if this is the selected player
+            if (String(id) === String(selectedId)) {
+                updateDetailPanel(m);
+                appendChartPoint(m);
+            }
+        });
+
+        document.getElementById('criticalCount').textContent = criticals;
+        document.getElementById('warningCount').textContent  = warnings;
+    }
+
+    // ── header stats ───────────────────────────────────────────────
+    function updateHeaderStats(data) {
+        const values = Object.values(data);
+        if (!values.length) return;
+
+        const avgSpd    = values.reduce((s,m) => s + (m.avgSpeed10s||0),    0) / values.length;
+        const avgHR     = values.reduce((s,m) => s + (m.avgHr10s||0),       0) / values.length;
+        const totalKm   = values.reduce((s,m) => s + (m.distanceCovered||0), 0);
+        const avgLoad   = values.reduce((s,m) => s + (m.loadPercent||0),     0) / values.length;
+
+        document.getElementById('hdrAvgSpeed').textContent  = avgSpd.toFixed(1);
+        document.getElementById('hdrAvgHR').textContent     = Math.round(avgHR);
+        document.getElementById('hdrTotalKm').textContent   = totalKm.toFixed(1) + ' km';
+        document.getElementById('hdrIntensity').textContent = Math.round(avgLoad) + '%';
+    }
+
+    // ── detail panel ───────────────────────────────────────────────
+    function updateDetailPanel(m) {
+        document.getElementById('dSpeed').textContent   = (m.avgSpeed10s||0).toFixed(1);
+        document.getElementById('dHR').textContent      = Math.round(m.avgHr10s||0);
+        document.getElementById('dDist').textContent    = (m.distanceCovered||0).toFixed(2);
+        document.getElementById('dMaxSpd').textContent  = (m.maxSpeedSeen||0).toFixed(1);
+        document.getElementById('dLoad').textContent    = Math.round(m.loadPercent||0);
+        document.getElementById('dSprints').textContent = m.sprintCount||0;
+    }
+
+    // ── chart ──────────────────────────────────────────────────────
+    function initChart() {
+        Chart.defaults.color = 'rgba(100,140,170,0.8)';
+        const ctx = document.getElementById('detailChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Speed (m/s)',
+                        data: [], borderColor: 'rgba(0,210,244,.9)',
+                        backgroundColor: 'rgba(0,210,244,.06)',
+                        fill: true, tension: 0.4, borderWidth: 1.5, pointRadius: 0
+                    },
+                    {
+                        label: 'HR (bpm)',
+                        data: [], borderColor: 'rgba(255,45,85,.9)',
+                        backgroundColor: 'rgba(255,45,85,.04)',
+                        fill: true, tension: 0.4, borderWidth: 1.5, pointRadius: 0,
+                        yAxisID: 'hr', hidden: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                animation: { duration: 200 },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index', intersect: false,
+                        backgroundColor: 'rgba(5,15,30,.95)',
+                        borderColor: 'rgba(0,210,244,.3)', borderWidth: 1,
+                        titleFont: { family:"'Share Tech Mono'", size:10 },
+                        bodyFont:  { family:"'Share Tech Mono'", size:10 }
+                    }
+                },
+                scales: {
+                    x: { grid:{ color:'rgba(255,255,255,.04)' }, ticks:{ display:false },
+                        border:{ color:'rgba(255,255,255,.08)' } },
+                    y: { grid:{ color:'rgba(255,255,255,.04)' },
+                        border:{ color:'rgba(255,255,255,.08)' },
+                        ticks:{ font:{ family:"'Share Tech Mono'", size:9 } },
+                        min:0, max:12 },
+                    hr:{ position:'right', grid:{ display:false },
+                        border:{ color:'rgba(255,255,255,.08)' },
+                        ticks:{ font:{ family:"'Share Tech Mono'", size:9 },
+                            color:'rgba(255,45,85,.7)' },
+                        min:60, max:220, display: false }
+                }
+            }
+        });
+    }
+
+    function appendChartPoint(m) {
+        if (!chart) return;
+        const time = new Date(m.timestamp).toLocaleTimeString().slice(0,-3);
+        chart.data.labels.push(time);
+        chart.data.datasets[0].data.push(m.avgSpeed10s);
+        chart.data.datasets[1].data.push(m.avgHr10s);
+        if (chart.data.labels.length > 40) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[1].data.shift();
+        }
+        chart.update('none');
+    }
+
+    function setTab(tab, btn) {
+        activeTab = tab;
+        document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (!chart) return;
+        chart.data.datasets[0].hidden = (tab === 'hr');
+        chart.data.datasets[1].hidden = (tab === 'speed');
+        chart.options.scales.hr.display = (tab !== 'speed');
+        chart.update();
+    }
+
+    // ── alerts ─────────────────────────────────────────────────────
+    const _lastAlertText = { text: '', time: 0 };
+
+    function addAlert(icon, text, level) {
+        // deduplicate — skip if same text within 3 seconds
+        const now = Date.now();
+        if (text === _lastAlertText.text && (now - _lastAlertText.time) < 3000) return;
+        _lastAlertText.text = text;
+        _lastAlertText.time = now;
+
+        const feed = document.getElementById('alertFeed');
+        const timeStr = new Date().toLocaleTimeString().slice(0,-3);
+        const div = document.createElement('div');
+        div.className = 'alert-item';
+        div.innerHTML = `
+    <span class="alert-icon">${icon}</span>
+    <span class="alert-text">${text}</span>
+    <span class="alert-time">${timeStr}</span>
+  `;
+        feed.insertBefore(div, feed.firstChild);
+        while (feed.children.length > 10) feed.removeChild(feed.lastChild);
     }
 </script>
 </body>

@@ -17,11 +17,11 @@ public class ProcessedMetric {
     private String position;
     private String teamId;
     private Integer shirtNumber;
-    private Double avgSpeed10s;     // 10-second window average
-    private Double avgHr10s;        // 10-second window average
-    private Double maxSpeedSeen;    // running max since monitoring started
-    private Double distanceCovered; // approx km (accumulated)
-    private Integer sprintCount;    // times speed crossed 7.0 m/s
-    private Double loadPercent;     // fatigue estimate 0–100
+    private Double avgSpeed10s;
+    private Double avgHr10s;
+    private Double maxSpeedSeen;
+    private Double distanceCovered;
+    private Integer sprintCount;
+    private Double loadPercent;
     private Long timestamp;
 }

@@ -2,6 +2,7 @@ package com.vbforge.athletemonitor.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Table(name = "players")
@@ -54,5 +55,6 @@ public class Player {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "team_id", nullable = false)
     @ToString.Exclude
+    @JsonIgnore
     private Team team;
 }

@@ -1,6 +1,6 @@
 package com.vbforge.athletemonitor.config;
 
-import com.vbforge.athletemonitor.service.ActiveSessionService;
+//import com.vbforge.athletemonitor.service.ActiveSessionService;
 
 import com.vbforge.athletemonitor.model.Player;
 import com.vbforge.athletemonitor.model.Team;
@@ -8,10 +8,10 @@ import com.vbforge.athletemonitor.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.context.event.EventListener;
+//import org.springframework.context.event.ContextRefreshedEvent;
+//import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+//import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -21,7 +21,7 @@ import java.util.List;
 public class DataInitializer implements CommandLineRunner {
 
     private final TeamRepository teamRepository;
-    private final ActiveSessionService sessionService;
+//    private final ActiveSessionService sessionService;       //this we need only for demo when testing autoStartSession and web-socket
 
     @Override
     public void run(String... args) {
@@ -31,12 +31,62 @@ public class DataInitializer implements CommandLineRunner {
         }
         log.info("Seeding teams and squads...");
         teamRepository.saveAll(List.of(
-            buildLiverpool(),
-            buildManCity(),
-            buildRealMadrid(),
-            buildInterMilan()
+                buildLiverpool(),
+                buildManCity(),
+                buildRealMadrid(),
+                buildInterMilan(),
+                buildBayernMunich(),
+                buildManUnited()
         ));
-        log.info("Seeded 4 teams successfully");
+        log.info("Seeded 6 teams successfully");
+    }
+
+    // ── MANCHESTER UNITED ── 4-4-2 ────────────────────────────────────────────
+    private Team buildManUnited() {
+        Team t = Team.builder()
+                .name("Manchester United")
+                .formation("4-4-2")
+                .badgeColor("#DA291C")
+                .country("England")
+                .build();
+        addPlayers(t, List.of(
+                p("André Onana",        24, "GK", "Goalkeeper",    29, 4, 6.9,  50),
+                p("Diogo Dalot",        20, "RB", "Right Back",    26, 4, 8.1,  60),
+                p("Raphaël Varane",     19, "CB", "Center Back",   31, 4, 7.4,  52),
+                p("Lisandro Martínez",  6,  "CB", "Center Back",   27, 5, 7.8,  53),
+                p("Luke Shaw",          23, "LB", "Left Back",     29, 4, 7.6,  54),
+                p("Bruno Fernandes",    8,  "RM", "Right Mid",     30, 5, 8.2,  58),
+                p("Casemiro",           18, "CM", "Center Mid",    33, 4, 6.5,  51),
+                p("Kobbie Mainoo",      37, "CM", "Center Mid",    20, 5, 8.4,  57),
+                p("Marcus Rashford",    10, "LM", "Left Mid",      27, 4, 9.0,  59),
+                p("Rasmus Højlund",     11, "ST", "Striker",       22, 4, 8.8,  55),
+                p("Joshua Zirkzee",     9,  "ST", "Striker",       23, 4, 8.5,  54)
+        ));
+        return t;
+    }
+
+    // ── BAYERN MUNICH ── 4-2-3-1 ─────────────────────────────────────────────
+    private Team buildBayernMunich() {
+        Team t = Team.builder()
+                .name("Bayern Munich")
+                .formation("4-2-3-1")
+                .badgeColor("#DC052D")
+                .country("Germany")
+                .build();
+        addPlayers(t, List.of(
+                p("Manuel Neuer",        1,  "GK", "Goalkeeper",    38, 5, 6.5,  48),
+                p("Joshua Kimmich",      6,  "RB", "Right Back",    29, 5, 7.9,  57),
+                p("Matthijs de Ligt",    4,  "CB", "Center Back",   25, 5, 7.6,  52),
+                p("Dayot Upamecano",     2,  "CB", "Center Back",   26, 4, 8.0,  53),
+                p("Alphonso Davies",     19, "LB", "Left Back",     24, 5, 9.6,  58),
+                p("Leon Goretzka",       8,  "CDM","Def Mid",       29, 4, 7.5,  55),
+                p("Konrad Laimer",       27, "CDM","Def Mid",       27, 4, 8.3,  56),
+                p("Jamal Musiala",       42, "CAM","Att Mid",       22, 5, 9.5,  57),
+                p("Leroy Sané",          10, "RW", "Right Wing",    28, 4, 9.2,  59),
+                p("Kingsley Coman",      11, "LW", "Left Wing",     28, 4, 9.1,  58),
+                p("Harry Kane",          9,  "ST", "Striker",       31, 5, 8.6,  50)
+        ));
+        return t;
     }
 
     // ── LIVERPOOL FC ── 4-3-3 ──────────────────────────────────────────
@@ -153,17 +203,18 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    @EventListener(ContextRefreshedEvent.class)
-    @Transactional
-    public void autoStartSession() {
-        // small delay to let DataInitializer.run() finish seeding first
-        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
-
-        teamRepository.findByName("Liverpool FC").ifPresent(team -> {
-            // activate all 11 players for demo purposes
-            sessionService.startSession(team, team.getPlayers());
-            log.info("Auto-started monitoring session for: {}", team.getName());
-        });
-    }
+    //removed - since we use actual data from kafka now
+//    @EventListener(ContextRefreshedEvent.class)
+//    @Transactional
+//    public void autoStartSession() {
+//        // small delay to let DataInitializer.run() finish seeding first
+//        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+//
+//        teamRepository.findByName("Liverpool FC").ifPresent(team -> {
+//            // activate all 11 players for demo purposes
+//            sessionService.startSession(team, team.getPlayers());
+//            log.info("Auto-started monitoring session for: {}", team.getName());
+//        });
+//    }
 
 }

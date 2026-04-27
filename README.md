@@ -114,3 +114,6 @@ src/main/java/com/vbforge/athletemonitor/
 - Prometheus + Grafana metrics dashboard
 
 ---
+### Screenshots
+
+![](pictures/Screenshot1.png)
