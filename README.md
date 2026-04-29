@@ -117,3 +117,9 @@ src/main/java/com/vbforge/athletemonitor/
 ### Screenshots
 
 ![](pictures/Screenshot1.png)
+![](pictures/Screenshot2.png)
+![](pictures/Screenshot3.png)
+![](pictures/Screenshot4.png)
+![](pictures/Screenshot5.png)
+![](pictures/Screenshot6.png)
+![](pictures/Screenshot7.png)
